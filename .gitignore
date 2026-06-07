@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Excel / Temporary files
+*.xlsx
+*.csv
+sawyer_temp_downloads/
+
+# PyInstaller / Build outputs
+build/
+dist/
+*.spec
+
+# User credentials and local profile data
+config.json
+browser_profile/
+*.log
