@@ -145,6 +145,10 @@ class SawyerApp:
         
         ttk.Button(out_frame, text="Browse...", command=self.browse_output_dir).grid(row=0, column=2, padx=5, pady=5)
         
+        self.headless_var = tk.BooleanVar(value=False)
+        self.headless_cb = ttk.Checkbutton(out_frame, text="Run browser in background (headless)", variable=self.headless_var)
+        self.headless_cb.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
         # Action button
         self.run_btn = ttk.Button(frame, text="Start Download & Processing", command=self.start_scraping_thread)
         self.run_btn.pack(pady=15, ipady=5)
@@ -233,7 +237,7 @@ class SawyerApp:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(
-                run_scraper(email, password, start_date, end_date, temp_dir, self.log)
+                run_scraper(email, password, start_date, end_date, temp_dir, self.log, headless=self.headless_var.get())
             )
 
             
@@ -298,7 +302,122 @@ class SawyerApp:
             self.log(f"ERROR: {e}")
             messagebox.showerror("Error", f"Failed to process files: {e}")
 
+def run_silent_cli(args):
+    """Run the scraping and processing pipeline in command-line mode without GUI."""
+    # Load configuration for credentials
+    config_dir = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation")
+    config_file = os.path.join(config_dir, "config.json")
+    
+    email = args.email
+    password = args.password
+    
+    if (not email or not password) and os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+                email = email or config.get("email")
+                password = password or config.get("password")
+        except Exception:
+            pass
+            
+    if not email or not password:
+        print("ERROR: Sawyer credentials are required. Run the GUI once and save them, or pass --email and --password.")
+        sys.exit(1)
+        
+    # Dates
+    start_date = args.start_date
+    end_date = args.end_date
+    
+    if not start_date or not end_date:
+        today = datetime.now()
+        if args.days:
+            start_dt = today - timedelta(days=args.days - 1)
+            start_date = start_dt.strftime("%Y-%m-%d")
+        else:
+            start_date = today.strftime("%Y-%m-%d")
+        end_date = today.strftime("%Y-%m-%d")
+        
+    output_dir = args.output_dir or os.path.expanduser("~/Downloads")
+    temp_dir = os.path.join(output_dir, "sawyer_temp_downloads")
+    
+    print(f"Starting silent processing...")
+    print(f"Date Range: {start_date} to {end_date}")
+    print(f"Output Directory: {output_dir}")
+    
+    # 1. Verify Playwright Chromium is installed
+    print("Verifying browser requirements...")
+    original_argv = sys.argv
+    sys.argv = ["playwright", "install", "chromium"]
+    try:
+        import playwright.__main__
+        playwright.__main__.main()
+    except SystemExit:
+        pass
+    finally:
+        sys.argv = original_argv
+        
+    # 2. Run Scraper
+    print("Running scraper...")
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            run_scraper(email, password, start_date, end_date, temp_dir, print, headless=args.headless)
+        )
+        
+        # 3. Find all downloaded CSVs
+        csv_files = glob.glob(os.path.join(temp_dir, "*.csv"))
+        if not csv_files:
+            print("No rosters were downloaded. Check credentials or date range.")
+            sys.exit(1)
+            
+        print(f"Downloaded {len(csv_files)} rosters. Processing hours...")
+        combined, summary = process_roster(csv_files, print)
+        
+        if combined is not None:
+            out_path = os.path.join(output_dir, f"Sawyer_Billing_{start_date}_to_{end_date}.xlsx")
+            save_to_excel(combined, summary, out_path)
+            print(f"SUCCESS: Report saved to: {out_path}")
+            
+            # Clean up temp files
+            for f in csv_files:
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+            try:
+                os.rmdir(temp_dir)
+            except Exception:
+                pass
+        else:
+            print("No data was parsed from the rosters.")
+            
+    except Exception as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = SawyerApp(root)
-    root.mainloop()
+    import argparse
+    import sys
+    
+    parser = argparse.ArgumentParser(description="Sawyer Roster Billing & Automation Tool")
+    parser.add_argument("--cli", action="store_true", help="Run in command-line mode without GUI")
+    parser.add_argument("--email", help="Sawyer account email")
+    parser.add_argument("--password", help="Sawyer account password")
+    parser.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", help="End date (YYYY-MM-DD)")
+    parser.add_argument("--days", type=int, help="Number of days prior to today to process (e.g. 1 for today)")
+    parser.add_argument("--output-dir", help="Directory to save the Excel file")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run browser in background (headless)")
+    
+    # Check if CLI mode is requested (or if we are running in non-interactive environment)
+    if len(sys.argv) > 1 and ("--cli" in sys.argv or "-h" in sys.argv or "--help" in sys.argv):
+        args = parser.parse_args()
+        # Force headless mode in CLI unless explicitly overridden
+        if "--headless" not in sys.argv:
+            args.headless = True
+        run_silent_cli(args)
+    else:
+        root = tk.Tk()
+        app = SawyerApp(root)
+        root.mainloop()

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
 
-async def run_scraper(email, password, start_date_str, end_date_str, download_dir, progress_callback=None):
+async def run_scraper(email, password, start_date_str, end_date_str, download_dir, progress_callback=None, headless=False):
     """
     Automates logging into Sawyer and downloading rosters for all camps 
     in a date range.
@@ -23,7 +23,7 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
         
         context = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
-            headless=False, 
+            headless=headless, 
             args=["--disable-blink-features=AutomationControlled"],
             accept_downloads=True
         )
@@ -99,10 +99,9 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
                 
             # Navigate to the daily calendar
             await page.goto(f"https://www.hisawyer.com/portal/daily_calendar?date={date_str}")
-            await page.wait_for_load_state("networkidle")
             
             # Wait for calendar container to load
-            await page.wait_for_selector(".daily-calendar, [class*='calendar']", timeout=10000)
+            await page.wait_for_selector(".daily-calendar, [class*='calendar']", timeout=20000)
             
             # Extract all roster URLs on the daily calendar page using absolute links
             roster_urls = await page.evaluate("""() => {
@@ -129,11 +128,10 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
                     # Navigate directly to the roster URL
                     await page.goto(roster_url)
                     await page.wait_for_url("**/portal/v2/rosters/**", timeout=30000)
-                    await page.wait_for_load_state("networkidle")
                     
                     # 1. Click "Roster Actions" dropdown button
                     roster_actions = page.locator("text=/Roster Actions/i").first
-                    await roster_actions.wait_for(state="visible", timeout=10000)
+                    await roster_actions.wait_for(state="visible", timeout=20000)
                     
                     print_roster_btn = page.locator("text=/Print Roster/i").first
                     dropdown_opened = False
