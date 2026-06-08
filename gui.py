@@ -456,8 +456,8 @@ def generate_operational_email_body(combined_df, report_name, date_str):
     import pandas as pd
     report_name_lower = (report_name or "").lower()
     
-    # 1. DROP OFF (9:15 AM)
-    if "drop" in report_name_lower or "915" in report_name_lower or "morning" in report_name_lower:
+    # 1. DROP OFF (9:20 AM)
+    if "drop" in report_name_lower or "920" in report_name_lower or "morning" in report_name_lower:
         body_lines = []
         body_lines.append(f"=== Drop Off Attendance Summary ({date_str}) ===")
         
@@ -504,8 +504,8 @@ def generate_operational_email_body(combined_df, report_name, date_str):
                     
         return "\n".join(body_lines).strip()
         
-    # 2. PICK UP (12:15 PM)
-    elif "pick" in report_name_lower or "1215" in report_name_lower or "midday" in report_name_lower:
+    # 2. PICK UP (12:20 PM)
+    elif "pick" in report_name_lower or "1220" in report_name_lower or "midday" in report_name_lower:
         body_lines = []
         body_lines.append(f"=== Pick Up Attendance Summary ({date_str}) ===")
         
