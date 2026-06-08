@@ -28,7 +28,7 @@ Designed specifically for Camp Mirage owners to streamline weekly billing workfl
 * **Dependencies**: None. The app runs as a standalone `.exe` and does not require Python, Node.js, or any pre-installed database/browser drivers.
 
 ### 2. Running the Tool
-1. Double-click the executable file: **`SawyerRosterAutomation_v21.exe`**.
+1. Double-click the executable file: **`SawyerRosterAutomation_v2.exe`**.
 2. If Windows Defender shows a *"Windows protected your PC"* smart screen, click **More info** and select **Run anyway** (this is normal for custom-compiled applications).
 
 ### 3. Using the Automated Scraper
@@ -50,6 +50,43 @@ If you prefer not to use the automated scraper:
 2. Put all the files into a single folder.
 3. Go to the **Process Local Folder** tab in the app, select that folder, and click **Process & Clean CSVs**.
 4. The app will immediately run the billing calculations and output the Excel spreadsheet in that same folder.
+
+---
+
+## Running in the Background & Automation
+
+The application supports running completely invisibly (headless), both manually and automatically.
+
+### 1. Running Manually in the Background
+In the GUI, check the box **"Run browser in background (headless)"** before clicking **Start Download & Processing**. The browser window will remain hidden, and you can monitor progress in the **System Log** panel at the bottom.
+
+### 2. Automating Execution (e.g., Daily at 6:00 PM EST)
+The app includes a silent Command Line Interface (CLI) mode. You can configure Windows Task Scheduler to run the scraper and compile the billing report automatically every day.
+
+#### CLI Command Format:
+```powershell
+# Run silently for today's date using saved credentials:
+SawyerRosterAutomation_v2.exe --cli
+
+# Run silently for the last 7 days of rosters:
+SawyerRosterAutomation_v2.exe --cli --days 7
+
+# Run silently for a specific date range, saving to a custom folder:
+SawyerRosterAutomation_v2.exe --cli --start-date 2026-06-01 --end-date 2026-06-05 --output-dir "C:\MyBillingReports"
+```
+
+#### How to Schedule the Task (Windows Task Scheduler):
+1. Press `Win + R`, type `taskschd.msc`, and press **Enter** to open the Windows Task Scheduler.
+2. In the right-hand panel, click **Create Basic Task...**.
+3. **Name**: `Sawyer Roster Billing Automation`
+4. **Trigger**: Select **Daily**, then set the start time to `6:00 PM` (or `18:00`).
+5. **Action**: Select **Start a program**.
+6. **Program/script**: Click **Browse...** and select your `SawyerRosterAutomation_v2.exe` executable.
+7. **Add arguments**: Type `--cli` (or `--cli --days 1` to process today's roster).
+8. **Start in (optional)**: Paste the directory containing the executable (e.g. `C:\Users\thoma\OneDrive\App`).
+9. Click **Finish**.
+
+*Note: Make sure you have run the program manually in the GUI at least once and successfully logged in so your credentials and browser session are saved.*
 
 ---
 
