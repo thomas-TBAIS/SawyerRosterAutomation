@@ -14,6 +14,7 @@ import json
 # Import core logic
 from data_processor import process_roster, save_to_excel
 from scraper import run_scraper
+from email_sender import send_billing_email
 
 class SawyerApp:
     def __init__(self, root):
@@ -33,24 +34,34 @@ class SawyerApp:
         self.create_widgets()
         
     def load_config(self):
+        default_config = {
+            "remember": True, 
+            "email": "", 
+            "password": "", 
+            "email_enabled": False,
+            "sender_email": "",
+            "sender_password": "",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": "587",
+            "recipient_email": ""
+        }
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
-                    return json.load(f)
+                    loaded = json.load(f)
+                    default_config.update(loaded)
             except Exception:
                 pass
-        return {"remember": True, "email": "", "password": ""}
+        return default_config
         
-    def save_config(self, email, password, remember):
+    def save_config(self, **kwargs):
         try:
             os.makedirs(self.config_dir, exist_ok=True)
-            config = {
-                "remember": remember,
-                "email": email if remember else "",
-                "password": password if remember else ""
-            }
+            current_config = self.load_config()
+            current_config.update(kwargs)
             with open(self.config_file, 'w') as f:
-                json.dump(config, f)
+                json.dump(current_config, f, indent=4)
+            self.config = current_config
         except Exception:
             pass
         
@@ -67,8 +78,13 @@ class SawyerApp:
         self.tab_local = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_local, text="Process Local Folder")
         
+        # Tab 3: Email Settings
+        self.tab_email = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_email, text="Email Settings")
+        
         self.setup_auto_tab()
         self.setup_local_tab()
+        self.setup_email_tab()
         
         # Log console (common at bottom)
         log_frame = ttk.LabelFrame(self.root, text="System Log")
@@ -194,7 +210,11 @@ class SawyerApp:
             return
             
         # Save credentials based on checkbox
-        self.save_config(email, password, self.remember_var.get())
+        self.save_config(
+            email=email if self.remember_var.get() else "",
+            password=password if self.remember_var.get() else "",
+            remember=self.remember_var.get()
+        )
             
         try:
             datetime.strptime(start_date, "%Y-%m-%d")
@@ -254,6 +274,25 @@ class SawyerApp:
                 out_path = os.path.join(output_dir, f"Sawyer_Billing_{start_date}_to_{end_date}.xlsx")
                 save_to_excel(combined, summary, out_path)
                 self.log(f"SUCCESS: Billed hours successfully saved to: {out_path}")
+                
+                # Check if email is enabled
+                if self.config.get("email_enabled", False):
+                    self.log("Emailing billing report...")
+                    try:
+                        send_billing_email(
+                            sender_email=self.config.get("sender_email"),
+                            sender_password=self.config.get("sender_password"),
+                            smtp_server=self.config.get("smtp_server"),
+                            smtp_port=self.config.get("smtp_port"),
+                            recipient_email=self.config.get("recipient_email"),
+                            subject=f"Sawyer Billing Report {start_date} to {end_date}",
+                            body=f"Hello,\n\nPlease find attached the Sawyer billing report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} for the range {start_date} to {end_date}.",
+                            attachment_path=out_path
+                        )
+                        self.log("SUCCESS: Billing report emailed successfully!")
+                    except Exception as email_err:
+                        self.log(f"WARNING: Report saved locally, but failed to email: {email_err}")
+                
                 messagebox.showinfo("Success", f"Billing report created successfully at:\n{out_path}")
                 
                 # Only clean up temp files if processing succeeded
@@ -302,24 +341,132 @@ class SawyerApp:
             self.log(f"ERROR: {e}")
             messagebox.showerror("Error", f"Failed to process files: {e}")
 
+    def setup_email_tab(self):
+        frame = ttk.Frame(self.tab_email, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 1. Enable Toggle
+        toggle_frame = ttk.Frame(frame, padding=5)
+        toggle_frame.pack(fill=tk.X, pady=5)
+        self.email_enabled_var = tk.BooleanVar(value=self.config.get("email_enabled", False))
+        self.email_enabled_cb = ttk.Checkbutton(toggle_frame, text="Enable Emailing Reports Automatically", variable=self.email_enabled_var, command=self.toggle_email_fields)
+        self.email_enabled_cb.pack(side=tk.LEFT, padx=5)
+        
+        # 2. Settings Inputs
+        settings_frame = ttk.LabelFrame(frame, text="SMTP Server Configuration", padding=10)
+        settings_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(settings_frame, text="Sender Email:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.sender_email_entry = ttk.Entry(settings_frame, width=40)
+        self.sender_email_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(settings_frame, text="Sender Password / App Password:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.sender_password_entry = ttk.Entry(settings_frame, show="*", width=40)
+        self.sender_password_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        ttk.Label(settings_frame, text="SMTP Server:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        self.smtp_server_entry = ttk.Entry(settings_frame, width=40)
+        self.smtp_server_entry.grid(row=2, column=1, padx=5, pady=5)
+        
+        ttk.Label(settings_frame, text="SMTP Port:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.smtp_port_entry = ttk.Entry(settings_frame, width=15)
+        self.smtp_port_entry.grid(row=3, column=1, padx=5, pady=5)
+        
+        ttk.Label(settings_frame, text="Recipient Email:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        self.recipient_email_entry = ttk.Entry(settings_frame, width=40)
+        self.recipient_email_entry.grid(row=4, column=1, padx=5, pady=5)
+        
+        # Load values from config
+        self.sender_email_entry.insert(0, self.config.get("sender_email", ""))
+        self.sender_password_entry.insert(0, self.config.get("sender_password", ""))
+        self.smtp_server_entry.insert(0, self.config.get("smtp_server", "smtp.gmail.com"))
+        self.smtp_port_entry.insert(0, self.config.get("smtp_port", "587"))
+        self.recipient_email_entry.insert(0, self.config.get("recipient_email", ""))
+        
+        # Controls Frame
+        ctrl_frame = ttk.Frame(frame, padding=5)
+        ctrl_frame.pack(fill=tk.X, pady=10)
+        
+        self.save_email_btn = ttk.Button(ctrl_frame, text="Save Email Settings", command=self.save_email_settings)
+        self.save_email_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.test_email_btn = ttk.Button(ctrl_frame, text="Send Test Email", command=self.send_test_email)
+        self.test_email_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.toggle_email_fields()
+        
+    def toggle_email_fields(self):
+        state = tk.NORMAL if self.email_enabled_var.get() else tk.DISABLED
+        self.sender_email_entry.config(state=state)
+        self.sender_password_entry.config(state=state)
+        self.smtp_server_entry.config(state=state)
+        self.smtp_port_entry.config(state=state)
+        self.recipient_email_entry.config(state=state)
+        
+    def save_email_settings(self):
+        enabled = self.email_enabled_var.get()
+        sender = self.sender_email_entry.get().strip()
+        pwd = self.sender_password_entry.get()
+        server = self.smtp_server_entry.get().strip()
+        port = self.smtp_port_entry.get().strip()
+        recipient = self.recipient_email_entry.get().strip()
+        
+        self.save_config(
+            email_enabled=enabled,
+            sender_email=sender,
+            sender_password=pwd,
+            smtp_server=server,
+            smtp_port=port,
+            recipient_email=recipient
+        )
+        self.log("Email settings saved.")
+        messagebox.showinfo("Success", "Email settings saved successfully.")
+        
+    def send_test_email(self):
+        sender = self.sender_email_entry.get().strip()
+        pwd = self.sender_password_entry.get()
+        server = self.smtp_server_entry.get().strip()
+        port = self.smtp_port_entry.get().strip()
+        recipient = self.recipient_email_entry.get().strip()
+        
+        if not sender or not pwd or not recipient:
+            messagebox.showerror("Error", "Please fill in Sender Email, Password, and Recipient Email before testing.")
+            return
+            
+        self.log("Sending test email...")
+        try:
+            send_billing_email(
+                sender_email=sender,
+                sender_password=pwd,
+                smtp_server=server,
+                smtp_port=port,
+                recipient_email=recipient,
+                subject="Sawyer Automation - SMTP Test Email",
+                body="This is a test email from the Sawyer Roster Billing & Automation tool. SMTP connection is working correctly!"
+            )
+            self.log("SUCCESS: Test email sent successfully!")
+            messagebox.showinfo("Success", "Test email sent successfully!")
+        except Exception as e:
+            self.log(f"FAILED to send test email: {e}")
+            messagebox.showerror("Error", f"Failed to send email:\n{e}")
+
 def run_silent_cli(args):
     """Run the scraping and processing pipeline in command-line mode without GUI."""
     # Load configuration for credentials
     config_dir = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation")
     config_file = os.path.join(config_dir, "config.json")
     
-    email = args.email
-    password = args.password
-    
-    if (not email or not password) and os.path.exists(config_file):
+    config = {}
+    if os.path.exists(config_file):
         try:
             with open(config_file, 'r') as f:
                 config = json.load(f)
-                email = email or config.get("email")
-                password = password or config.get("password")
         except Exception:
             pass
             
+    email = args.email or config.get("email")
+    password = args.password or config.get("password")
+    
     if not email or not password:
         print("ERROR: Sawyer credentials are required. Run the GUI once and save them, or pass --email and --password.")
         sys.exit(1)
@@ -379,6 +526,34 @@ def run_silent_cli(args):
             save_to_excel(combined, summary, out_path)
             print(f"SUCCESS: Report saved to: {out_path}")
             
+            # Send Email if enabled
+            email_enabled = args.send_email or config.get("email_enabled", False)
+            if email_enabled:
+                sender = config.get("sender_email")
+                pwd = config.get("sender_password")
+                smtp_srv = config.get("smtp_server", "smtp.gmail.com")
+                smtp_prt = config.get("smtp_port", "587")
+                recipient = config.get("recipient_email")
+                
+                if sender and pwd and recipient:
+                    print("Sending email...")
+                    try:
+                        send_billing_email(
+                            sender_email=sender,
+                            sender_password=pwd,
+                            smtp_server=smtp_srv,
+                            smtp_port=smtp_prt,
+                            recipient_email=recipient,
+                            subject=f"Sawyer Billing Report {start_date} to {end_date} (Automatic)",
+                            body=f"Please find attached the automatically generated billing report.",
+                            attachment_path=out_path
+                        )
+                        print("SUCCESS: Email sent successfully!")
+                    except Exception as email_err:
+                        print(f"ERROR: Email failed to send: {email_err}")
+                else:
+                    print("ERROR: Email settings are incomplete in config.json. Cannot send email.")
+            
             # Clean up temp files
             for f in csv_files:
                 try:
@@ -409,11 +584,10 @@ if __name__ == "__main__":
     parser.add_argument("--days", type=int, help="Number of days prior to today to process (e.g. 1 for today)")
     parser.add_argument("--output-dir", help="Directory to save the Excel file")
     parser.add_argument("--headless", action="store_true", default=False, help="Run browser in background (headless)")
+    parser.add_argument("--send-email", action="store_true", help="Send report via email after compilation")
     
-    # Check if CLI mode is requested (or if we are running in non-interactive environment)
     if len(sys.argv) > 1 and ("--cli" in sys.argv or "-h" in sys.argv or "--help" in sys.argv):
         args = parser.parse_args()
-        # Force headless mode in CLI unless explicitly overridden
         if "--headless" not in sys.argv:
             args.headless = True
         run_silent_cli(args)

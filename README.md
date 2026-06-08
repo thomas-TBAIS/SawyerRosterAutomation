@@ -28,7 +28,7 @@ Designed specifically for Camp Mirage owners to streamline weekly billing workfl
 * **Dependencies**: None. The app runs as a standalone `.exe` and does not require Python, Node.js, or any pre-installed database/browser drivers.
 
 ### 2. Running the Tool
-1. Double-click the executable file: **`SawyerRosterAutomation_v2.exe`**.
+1. Double-click the executable file: **`SawyerRosterAutomation_v3.exe`**.
 2. If Windows Defender shows a *"Windows protected your PC"* smart screen, click **More info** and select **Run anyway** (this is normal for custom-compiled applications).
 
 ### 3. Using the Automated Scraper
@@ -53,6 +53,22 @@ If you prefer not to use the automated scraper:
 
 ---
 
+## Emailing Reports Automatically (SMTP Setup)
+
+You can configure the tool to automatically email the generated report to you after a run completes.
+
+### 1. Enable & Configure SMTP
+Go to the **Email Settings** tab in the GUI:
+1. Check **Enable Emailing Reports Automatically**.
+2. Enter your **Sender Email** and **Sender Password / App Password**.
+   * *Note*: If using Gmail, you **must** use a Google **App Password** (not your standard login password) which you can generate under Google Account -> Security -> 2-Step Verification -> App Passwords.
+3. Enter your **SMTP Server** (e.g. `smtp.gmail.com` for Gmail, `smtp.office365.com` for Outlook) and **SMTP Port** (usually `587`).
+4. Enter your **Recipient Email**.
+5. Click **Save Email Settings**.
+6. (Optional) Click **Send Test Email** to verify the connection works.
+
+---
+
 ## Running in the Background & Automation
 
 The application supports running completely invisibly (headless), both manually and automatically.
@@ -60,29 +76,32 @@ The application supports running completely invisibly (headless), both manually 
 ### 1. Running Manually in the Background
 In the GUI, check the box **"Run browser in background (headless)"** before clicking **Start Download & Processing**. The browser window will remain hidden, and you can monitor progress in the **System Log** panel at the bottom.
 
-### 2. Automating Execution (e.g., Daily at 6:00 PM EST)
-The app includes a silent Command Line Interface (CLI) mode. You can configure Windows Task Scheduler to run the scraper and compile the billing report automatically every day.
+### 2. Automating Execution (e.g., Daily Scheduling)
+The app includes a silent Command Line Interface (CLI) mode. You can configure Windows Task Scheduler to run the scraper and compile/email the report automatically.
 
 #### CLI Command Format:
 ```powershell
-# Run silently for today's date using saved credentials:
-SawyerRosterAutomation_v2.exe --cli
+# Run silently for today's date using saved credentials (saves file only):
+SawyerRosterAutomation_v3.exe --cli
 
-# Run silently for the last 7 days of rosters:
-SawyerRosterAutomation_v2.exe --cli --days 7
+# Run silently for today's date and email the report (uses settings configured in the GUI):
+SawyerRosterAutomation_v3.exe --cli --send-email
+
+# Run silently for the last 7 days of rosters and email the report:
+SawyerRosterAutomation_v3.exe --cli --days 7 --send-email
 
 # Run silently for a specific date range, saving to a custom folder:
-SawyerRosterAutomation_v2.exe --cli --start-date 2026-06-01 --end-date 2026-06-05 --output-dir "C:\MyBillingReports"
+SawyerRosterAutomation_v3.exe --cli --start-date 2026-06-01 --end-date 2026-06-05 --output-dir "C:\MyBillingReports"
 ```
 
 #### How to Schedule the Task (Windows Task Scheduler):
 1. Press `Win + R`, type `taskschd.msc`, and press **Enter** to open the Windows Task Scheduler.
 2. In the right-hand panel, click **Create Basic Task...**.
 3. **Name**: `Sawyer Roster Billing Automation`
-4. **Trigger**: Select **Daily**, then set the start time to `6:00 PM` (or `18:00`).
+4. **Trigger**: Select **Daily**, then set the desired run time (e.g., `9:15 AM`, `12:15 PM`, or `6:00 PM`).
 5. **Action**: Select **Start a program**.
-6. **Program/script**: Click **Browse...** and select your `SawyerRosterAutomation_v2.exe` executable.
-7. **Add arguments**: Type `--cli` (or `--cli --days 1` to process today's roster).
+6. **Program/script**: Click **Browse...** and select your `SawyerRosterAutomation_v3.exe` executable.
+7. **Add arguments**: Type `--cli --days 1 --send-email` (or without `--send-email` if you do not want it emailed).
 8. **Start in (optional)**: Paste the directory containing the executable (e.g. `C:\Users\thoma\OneDrive\App`).
 9. Click **Finish**.
 
