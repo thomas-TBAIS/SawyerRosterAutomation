@@ -28,7 +28,7 @@ Designed specifically for Camp Mirage owners to streamline weekly billing workfl
 * **Dependencies**: None. The app runs as a standalone `.exe` and does not require Python, Node.js, or any pre-installed database/browser drivers.
 
 ### 2. Running the Tool
-1. Double-click the executable file: **`SawyerRosterAutomation_v3.exe`**.
+1. Double-click the executable file: **`SawyerRosterAutomation_v4.exe`**.
 2. If Windows Defender shows a *"Windows protected your PC"* smart screen, click **More info** and select **Run anyway** (this is normal for custom-compiled applications).
 
 ### 3. Using the Automated Scraper
@@ -81,31 +81,28 @@ The app includes a silent Command Line Interface (CLI) mode. You can configure W
 
 #### CLI Command Format:
 ```powershell
-# Run silently for today's date using saved credentials (saves file only):
-SawyerRosterAutomation_v3.exe --cli
+# Run silently for today's date and email the report as 'Drop Off':
+SawyerRosterAutomation_v4.exe --cli --send-email --report-name "Drop Off"
 
-# Run silently for today's date and email the report (uses settings configured in the GUI):
-SawyerRosterAutomation_v3.exe --cli --send-email
+# Run silently for today's date and email the report as 'Pick Up':
+SawyerRosterAutomation_v4.exe --cli --send-email --report-name "Pick Up"
 
-# Run silently for the last 7 days of rosters and email the report:
-SawyerRosterAutomation_v3.exe --cli --days 7 --send-email
-
-# Run silently for a specific date range, saving to a custom folder:
-SawyerRosterAutomation_v3.exe --cli --start-date 2026-06-01 --end-date 2026-06-05 --output-dir "C:\MyBillingReports"
+# Run silently for today's date and save locally as 'End of Day' (no email):
+SawyerRosterAutomation_v4.exe --cli --report-name "End of Day"
 ```
 
-#### How to Schedule the Task (Windows Task Scheduler):
+#### How to Schedule the Tasks (Windows Task Scheduler):
 1. Press `Win + R`, type `taskschd.msc`, and press **Enter** to open the Windows Task Scheduler.
 2. In the right-hand panel, click **Create Basic Task...**.
-3. **Name**: `Sawyer Roster Billing Automation`
-4. **Trigger**: Select **Daily**, then set the desired run time (e.g., `9:15 AM`, `12:15 PM`, or `6:00 PM`).
+3. **Name**: `Sawyer Roster - Drop Off` (for the 9:15 AM run)
+4. **Trigger**: Select **Daily**, then set the time to `9:15 AM`.
 5. **Action**: Select **Start a program**.
-6. **Program/script**: Click **Browse...** and select your `SawyerRosterAutomation_v3.exe` executable.
-7. **Add arguments**: Type `--cli --days 1 --send-email` (or without `--send-email` if you do not want it emailed).
+6. **Program/script**: Click **Browse...** and select your `SawyerRosterAutomation_v4.exe` executable.
+7. **Add arguments**: Type `--cli --days 1 --send-email --report-name "Drop Off"`
 8. **Start in (optional)**: Paste the directory containing the executable (e.g. `C:\Users\thoma\OneDrive\App`).
 9. Click **Finish**.
 
-*Note: Make sure you have run the program manually in the GUI at least once and successfully logged in so your credentials and browser session are saved.*
+*Repeat this process for your midday verification (12:15 PM) with arguments `--cli --days 1 --send-email --report-name "Pick Up"`, and evening billing (6:00 PM) with arguments `--cli --days 1 --report-name "End of Day"`.*
 
 ---
 
