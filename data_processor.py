@@ -68,6 +68,14 @@ def process_roster(filepaths, log_callback=None):
     all_dfs = []
     for filepath in filepaths:
         filename = os.path.basename(filepath)
+        if "canteen" in filename.lower() and "funds" in filename.lower():
+            msg = f"Skipping {filename}: Excluded category (Canteen Funds)"
+            if log_callback:
+                log_callback(msg)
+            else:
+                print(msg)
+            continue
+            
         try:
             df = pd.read_csv(filepath)
             # Clean whitespace from headers
@@ -106,6 +114,16 @@ def process_roster(filepaths, log_callback=None):
                     df['Camp Name'] = camp_label.replace('_', ' ')
                 else:
                     df['Camp Name'] = "Unknown Camp"
+            
+            # Check if this is Canteen Funds after resolving Camp Name
+            camp_name_val = str(df['Camp Name'].iloc[0]).lower() if 'Camp Name' in df.columns and len(df) > 0 else ""
+            if "canteen" in camp_name_val and "funds" in camp_name_val:
+                msg = f"Skipping {filename}: Excluded category (Canteen Funds)"
+                if log_callback:
+                    log_callback(msg)
+                else:
+                    print(msg)
+                continue
             
             # Verify required columns exist
             required = ['Date', 'Student Name', 'Parent Name', 'Check-in Time', 'Check-out Time']

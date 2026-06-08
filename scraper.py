@@ -139,6 +139,13 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
                             if (title && title.innerText) return title.innerText.trim();
                             return 'Unknown Camp';
                         }""")
+                        
+                        # Exclude Canteen Funds immediately
+                        if raw_camp_name and "canteen" in raw_camp_name.lower() and "funds" in raw_camp_name.lower():
+                            if progress_callback:
+                                progress_callback(f"Skipping download for {raw_camp_name} (Excluded category)")
+                            continue
+                            
                         import re
                         clean_camp = re.sub(r'[^a-zA-Z0-9\s\-_]', '', raw_camp_name)
                         clean_camp = re.sub(r'[\s_]+', '_', clean_camp).strip('_')
