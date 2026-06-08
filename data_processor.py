@@ -90,6 +90,23 @@ def process_roster(filepaths, log_callback=None):
                     except Exception:
                         df['Date'] = datetime.now().strftime("%Y-%m-%d")
             
+            # If 'Camp Name' column is missing from CSV, extract it dynamically from the filename
+            if 'Camp Name' not in df.columns:
+                parts = filename.split('_')
+                if len(parts) >= 3:
+                    roster_idx = -1
+                    for i, p in enumerate(parts):
+                        if 'roster' in p or '62792' in p or (p.isdigit() and len(p) > 5):
+                            roster_idx = i
+                            break
+                    if roster_idx > 1:
+                        camp_label = " ".join(parts[1:roster_idx])
+                    else:
+                        camp_label = " ".join(parts[1:-1])
+                    df['Camp Name'] = camp_label.replace('_', ' ')
+                else:
+                    df['Camp Name'] = "Unknown Camp"
+            
             # Verify required columns exist
             required = ['Date', 'Student Name', 'Parent Name', 'Check-in Time', 'Check-out Time']
             missing = [r for r in required if r not in df.columns]
@@ -153,7 +170,7 @@ def save_to_excel(combined_df, summary_df, output_path):
         
         # Select columns of interest for detailed view to keep it clean
         detail_cols = [
-            'Date', 'Student Name', 'Parent Name', 
+            'Date', 'Camp Name', 'Student Name', 'Parent Name', 
             'Check-in Time', 'Check-out Time', 
             'Calc Before Hours', 'Calc After Hours', 'Calc Total Hours'
         ]

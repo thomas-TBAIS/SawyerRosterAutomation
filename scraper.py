@@ -121,6 +121,7 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
                 progress_callback(f"Found {num_camps} camps on {date_str}")
                 
             for run_index, roster_url in enumerate(roster_urls):
+                clean_camp = "Unknown_Camp"
                 try:
                     if progress_callback:
                         progress_callback(f"Opening camp {run_index + 1}/{num_camps}...")
@@ -128,6 +129,21 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
                     # Navigate directly to the roster URL
                     await page.goto(roster_url)
                     await page.wait_for_url("**/portal/v2/rosters/**", timeout=30000)
+                    
+                    # Extract and clean camp name from the page header
+                    try:
+                        raw_camp_name = await page.evaluate("""() => {
+                            const h1 = document.querySelector('h1');
+                            if (h1 && h1.innerText) return h1.innerText.trim();
+                            const title = document.querySelector('.roster-title, [class*="title"], [class*="header"] h1');
+                            if (title && title.innerText) return title.innerText.trim();
+                            return 'Unknown Camp';
+                        }""")
+                        import re
+                        clean_camp = re.sub(r'[^a-zA-Z0-9\s\-_]', '', raw_camp_name)
+                        clean_camp = re.sub(r'[\s_]+', '_', clean_camp).strip('_')
+                    except Exception:
+                        pass
                     
                     # 1. Click "Roster Actions" dropdown button
                     roster_actions = page.locator("text=/Roster Actions/i").first
@@ -309,8 +325,8 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
                         
                     download = await download_info.value
                     
-                    # Prepend the date to the suggested filename to preserve the date context
-                    filename = f"{date_str}_{download.suggested_filename}"
+                    # Prepend the date and camp name to the suggested filename to preserve context
+                    filename = f"{date_str}_{clean_camp}_{download.suggested_filename}"
                     if not filename.endswith(".csv"):
                         filename += ".csv"
                         

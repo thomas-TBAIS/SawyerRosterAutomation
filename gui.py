@@ -279,14 +279,15 @@ class SawyerApp:
                 if self.config.get("email_enabled", False):
                     self.log("Emailing billing report...")
                     try:
+                        email_body = generate_operational_email_body(combined, "Sawyer_Billing", start_date)
                         send_billing_email(
                             sender_email=self.config.get("sender_email"),
                             sender_password=self.config.get("sender_password"),
                             smtp_server=self.config.get("smtp_server"),
                             smtp_port=self.config.get("smtp_port"),
                             recipient_email=self.config.get("recipient_email"),
-                            subject=f"Sawyer Billing Report {start_date} to {end_date}",
-                            body=f"Hello,\n\nPlease find attached the Sawyer billing report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} for the range {start_date} to {end_date}.",
+                            subject=f"Sawyer Billing Report ({start_date} to {end_date})",
+                            body=email_body,
                             attachment_path=out_path
                         )
                         self.log("SUCCESS: Billing report emailed successfully!")
@@ -450,6 +451,92 @@ class SawyerApp:
             self.log(f"FAILED to send test email: {e}")
             messagebox.showerror("Error", f"Failed to send email:\n{e}")
 
+def generate_operational_email_body(combined_df, report_name, date_str):
+    """Generates a mobile-friendly text summary for the email body."""
+    import pandas as pd
+    report_name_lower = (report_name or "").lower()
+    
+    # 1. DROP OFF (9:15 AM)
+    if "drop" in report_name_lower or "915" in report_name_lower or "morning" in report_name_lower:
+        body_lines = []
+        body_lines.append(f"=== Drop Off Attendance Summary ({date_str}) ===")
+        
+        total_reg = len(combined_df)
+        is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
+        total_in = is_checked_in.sum()
+        
+        body_lines.append(f"Total Kids at Camp: {total_reg}")
+        body_lines.append(f"Total Checked In: {total_in}")
+        body_lines.append("")
+        
+        camp_col = 'Camp Name' if 'Camp Name' in combined_df.columns else None
+        if camp_col:
+            grouped = combined_df.groupby(camp_col)
+            for camp, group in grouped:
+                group = group.sort_values(by='Student Name')
+                in_group_mask = group['Check-in Time'].notna() & (group['Check-in Time'].astype(str).str.strip() != '')
+                in_count = in_group_mask.sum()
+                reg_count = len(group)
+                
+                body_lines.append(f"{camp} ({in_count}/{reg_count} checked in):")
+                for _, row in group.iterrows():
+                    student_name = row['Student Name']
+                    checked_in_val = row['Check-in Time']
+                    has_checked_in = pd.notna(checked_in_val) and str(checked_in_val).strip() != ''
+                    
+                    if has_checked_in:
+                        body_lines.append(f"  - [x] {student_name}")
+                    else:
+                        body_lines.append(f"  - [ ] {student_name} (Absent)")
+                body_lines.append("")
+        else:
+            body_lines.append("Camps Breakdown:")
+            combined_df = combined_df.sort_values(by='Student Name')
+            for _, row in combined_df.iterrows():
+                student_name = row['Student Name']
+                checked_in_val = row['Check-in Time']
+                has_checked_in = pd.notna(checked_in_val) and str(checked_in_val).strip() != ''
+                
+                if has_checked_in:
+                    body_lines.append(f"  - [x] {student_name}")
+                else:
+                    body_lines.append(f"  - [ ] {student_name} (Absent)")
+                    
+        return "\n".join(body_lines).strip()
+        
+    # 2. PICK UP (12:15 PM)
+    elif "pick" in report_name_lower or "1215" in report_name_lower or "midday" in report_name_lower:
+        body_lines = []
+        body_lines.append(f"=== Pick Up Attendance Summary ({date_str}) ===")
+        
+        is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
+        is_checked_out = combined_df['Check-out Time'].notna() & (combined_df['Check-out Time'].astype(str).str.strip() != '')
+        still_in_df = combined_df[is_checked_in & ~is_checked_out]
+        
+        camp_col = 'Camp Name' if 'Camp Name' in still_in_df.columns else None
+        if camp_col:
+            still_in_df = still_in_df.sort_values(by=[camp_col, 'Student Name'])
+        else:
+            still_in_df = still_in_df.sort_values(by=['Student Name'])
+            
+        total_still_in = len(still_in_df)
+        body_lines.append(f"Kids Still Checked In: {total_still_in}")
+        body_lines.append("")
+        
+        if total_still_in > 0:
+            for idx, (_, row) in enumerate(still_in_df.iterrows(), 1):
+                student_name = row['Student Name']
+                body_lines.append(f"{idx}. {student_name}")
+        else:
+            body_lines.append("All kids have been checked out successfully!")
+            
+        return "\n".join(body_lines).strip()
+        
+    # 3. DEFAULT (End of Day/Other)
+    else:
+        return (f"Hello,\n\nPlease find attached the automatically generated {report_name or 'Sawyer Billing'} report "
+                f"compiled on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} for {date_str}.")
+
 def run_silent_cli(args):
     """Run the scraping and processing pipeline in command-line mode without GUI."""
     # Load configuration for credentials
@@ -522,7 +609,16 @@ def run_silent_cli(args):
         combined, summary = process_roster(csv_files, print)
         
         if combined is not None:
-            out_path = os.path.join(output_dir, f"Sawyer_Billing_{start_date}_to_{end_date}.xlsx")
+            # Custom report naming
+            report_label = args.report_name or "Sawyer_Billing"
+            safe_label = "".join(c if c.isalnum() or c in ['-', '_'] else '_' for c in report_label)
+            
+            if start_date == end_date:
+                filename = f"{safe_label}_{start_date}.xlsx"
+            else:
+                filename = f"{safe_label}_{start_date}_to_{end_date}.xlsx"
+                
+            out_path = os.path.join(output_dir, filename)
             save_to_excel(combined, summary, out_path)
             print(f"SUCCESS: Report saved to: {out_path}")
             
@@ -537,6 +633,8 @@ def run_silent_cli(args):
                 
                 if sender and pwd and recipient:
                     print("Sending email...")
+                    subject = f"Sawyer Report - {report_label} ({start_date})"
+                    body = generate_operational_email_body(combined, report_label, start_date)
                     try:
                         send_billing_email(
                             sender_email=sender,
@@ -544,8 +642,8 @@ def run_silent_cli(args):
                             smtp_server=smtp_srv,
                             smtp_port=smtp_prt,
                             recipient_email=recipient,
-                            subject=f"Sawyer Billing Report {start_date} to {end_date} (Automatic)",
-                            body=f"Please find attached the automatically generated billing report.",
+                            subject=subject,
+                            body=body,
                             attachment_path=out_path
                         )
                         print("SUCCESS: Email sent successfully!")
@@ -585,6 +683,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", help="Directory to save the Excel file")
     parser.add_argument("--headless", action="store_true", default=False, help="Run browser in background (headless)")
     parser.add_argument("--send-email", action="store_true", help="Send report via email after compilation")
+    parser.add_argument("--report-name", "-n", help="Custom name for the report (e.g. 'Drop Off', 'Pick Up', 'End of Day')")
     
     if len(sys.argv) > 1 and ("--cli" in sys.argv or "-h" in sys.argv or "--help" in sys.argv):
         args = parser.parse_args()
