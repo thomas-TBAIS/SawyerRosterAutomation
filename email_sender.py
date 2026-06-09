@@ -85,9 +85,17 @@ def send_sms_notification(sender_email, sender_password, smtp_server, smtp_port,
         for recipient in recipients:
             # Clean body of non-ASCII characters for basic gateway compatibility
             clean_body = body.encode('ascii', 'ignore').decode('ascii')
-            msg = f"From: {sender_email}\r\nTo: {recipient}\r\nSubject: Sawyer Alert\r\n\r\n{clean_body}"
+            # Normalize double quotes to single quotes
+            clean_body = clean_body.replace('"', "'")
             
-            server.sendmail(sender_email, recipient, msg)
+            # Use MIMEMultipart with empty subject (proven to bypass gateway spam filters)
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = recipient
+            msg['Subject'] = "" 
+            msg.attach(MIMEText(clean_body, 'plain'))
+            
+            server.sendmail(sender_email, recipient, msg.as_string())
             
         server.quit()
         return True

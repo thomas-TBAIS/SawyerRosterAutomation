@@ -595,73 +595,64 @@ def generate_operational_email_body(combined_df, report_name, date_str):
                 f"compiled on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} for {date_str}.")
 
 def generate_operational_sms_body(combined_df, report_name, date_str):
-    """Generates a highly compact summary for SMS/Text notifications to fit carrier limits."""
+    """Generates a highly compact, carrier-friendly summary for SMS/Text notifications to fit carrier limits."""
     report_name_lower = (report_name or "").lower()
     
     # 1. DROP OFF (9:20 AM)
     if "drop" in report_name_lower or "920" in report_name_lower or "morning" in report_name_lower:
-        body_lines = []
-        body_lines.append(f"=== Drop Off Summary ({date_str}) ===")
-        
         total_reg = len(combined_df)
         is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
         total_in = is_checked_in.sum()
         
-        body_lines.append(f"Total: {total_reg} | Present: {total_in}")
-        body_lines.append("")
+        body = f"Drop Off ({date_str}): Total {total_reg} | Present {total_in}.\r\n"
         
         camp_col = 'Camp Name' if 'Camp Name' in combined_df.columns else None
         if camp_col:
             grouped = combined_df.groupby(camp_col)
+            camp_summaries = []
             for camp, group in grouped:
-                group = group.sort_values(by='Student Name')
                 in_group_mask = group['Check-in Time'].notna() & (group['Check-in Time'].astype(str).str.strip() != '')
                 in_count = in_group_mask.sum()
                 reg_count = len(group)
-                
-                body_lines.append(f"{camp} ({in_count}/{reg_count} in):")
                 absent_group = group[~in_group_mask]
-                if len(absent_group) > 0:
-                    absent_names = ", ".join(absent_group['Student Name'].tolist())
-                    body_lines.append(f"  Absent: {absent_names}")
-                else:
-                    body_lines.append("  All present!")
+                
+                absent_names = ", ".join(absent_group['Student Name'].tolist()) if len(absent_group) > 0 else "None"
+                absent_names = absent_names.replace('"', "'")
+                camp_summaries.append(f"{camp} ({in_count}/{reg_count} present). Absent: {absent_names}")
+            body += "\r\n".join(camp_summaries)
         else:
             absent_df = combined_df[~is_checked_in]
-            if len(absent_df) > 0:
-                absent_names = ", ".join(absent_df['Student Name'].tolist())
-                body_lines.append(f"Absent: {absent_names}")
-            else:
-                body_lines.append("All present!")
-                
-        return "\n".join(body_lines).strip()
+            absent_names = ", ".join(absent_df['Student Name'].tolist()) if len(absent_df) > 0 else "None"
+            absent_names = absent_names.replace('"', "'")
+            body += f"Absent: {absent_names}"
+            
+        return body.strip()
         
     # 2. PICK UP (12:20 PM)
     elif "pick" in report_name_lower or "1220" in report_name_lower or "midday" in report_name_lower:
-        body_lines = []
-        body_lines.append(f"=== Pick Up Summary ({date_str}) ===")
-        
         is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
         is_checked_out = combined_df['Check-out Time'].notna() & (combined_df['Check-out Time'].astype(str).str.strip() != '')
         still_in_df = combined_df[is_checked_in & ~is_checked_out]
         
-        camp_col = 'Camp Name' if 'Camp Name' in still_in_df.columns else None
-        if camp_col:
-            still_in_df = still_in_df.sort_values(by=[camp_col, 'Student Name'])
-        else:
-            still_in_df = still_in_df.sort_values(by=['Student Name'])
-            
         total_still_in = len(still_in_df)
-        body_lines.append(f"Still checked in: {total_still_in}")
+        body = f"Pick Up ({date_str}): Still checked in: {total_still_in}.\r\n"
         
         if total_still_in > 0:
-            for idx, (_, row) in enumerate(still_in_df.iterrows(), 1):
-                student_name = row['Student Name']
-                body_lines.append(f"{idx}. {student_name}")
-        else:
-            body_lines.append("All checked out successfully!")
+            camp_col = 'Camp Name' if 'Camp Name' in still_in_df.columns else None
+            if camp_col:
+                still_in_df = still_in_df.sort_values(by=[camp_col, 'Student Name'])
+            else:
+                still_in_df = still_in_df.sort_values(by=['Student Name'])
             
-        return "\n".join(body_lines).strip()
+            kids_list = []
+            for _, row in still_in_df.iterrows():
+                student_name = row['Student Name'].replace('"', "'")
+                kids_list.append(student_name)
+            body += "Names: " + ", ".join(kids_list)
+        else:
+            body += "All checked out successfully!"
+            
+        return body.strip()
         
     # 3. DEFAULT (End of Day/Other)
     else:
