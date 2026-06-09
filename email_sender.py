@@ -47,3 +47,51 @@ def send_billing_email(sender_email, sender_password, smtp_server, smtp_port, re
         return True
     except Exception as e:
         raise Exception(f"SMTP error: {e}")
+
+def send_sms_notification(sender_email, sender_password, smtp_server, smtp_port, phone_numbers, body):
+    """
+    Sends a text message notification via T-Mobile email-to-SMS gateway (tmomail.net).
+    """
+    if not sender_email or not sender_password or not phone_numbers:
+        return False
+        
+    import re
+    # Clean and parse phone numbers
+    recipients = []
+    for num in phone_numbers.split(','):
+        num = num.strip()
+        if not num:
+            continue
+        # If it already looks like an email address, keep it
+        if '@' in num:
+            recipients.append(num)
+        else:
+            # Clean non-digits and check if it has 10 digits
+            clean_num = re.sub(r'\D', '', num)
+            if len(clean_num) == 10:
+                recipients.append(f"{clean_num}@tmomail.net")
+            elif len(clean_num) == 11 and clean_num.startswith('1'):
+                recipients.append(f"{clean_num[1:]}@tmomail.net")
+                
+    if not recipients:
+        return False
+        
+    try:
+        # Establish SMTP connection
+        server = smtplib.SMTP(smtp_server.strip(), int(smtp_port))
+        server.starttls()
+        server.login(sender_email.strip(), sender_password.strip())
+        
+        for recipient in recipients:
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = recipient
+            msg['Subject'] = "" 
+            msg.attach(MIMEText(body, 'plain'))
+            
+            server.sendmail(sender_email, recipient, msg.as_string())
+            
+        server.quit()
+        return True
+    except Exception as e:
+        raise Exception(f"SMS Gateway SMTP error: {e}")

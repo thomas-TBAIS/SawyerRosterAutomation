@@ -275,24 +275,45 @@ class SawyerApp:
                 save_to_excel(combined, summary, out_path)
                 self.log(f"SUCCESS: Billed hours successfully saved to: {out_path}")
                 
-                # Check if email is enabled
-                if self.config.get("email_enabled", False):
-                    self.log("Emailing billing report...")
-                    try:
-                        email_body = generate_operational_email_body(combined, "Sawyer_Billing", start_date)
-                        send_billing_email(
-                            sender_email=self.config.get("sender_email"),
-                            sender_password=self.config.get("sender_password"),
-                            smtp_server=self.config.get("smtp_server"),
-                            smtp_port=self.config.get("smtp_port"),
-                            recipient_email=self.config.get("recipient_email"),
-                            subject=f"Sawyer Billing Report ({start_date} to {end_date})",
-                            body=email_body,
-                            attachment_path=out_path
-                        )
-                        self.log("SUCCESS: Billing report emailed successfully!")
-                    except Exception as email_err:
-                        self.log(f"WARNING: Report saved locally, but failed to email: {email_err}")
+                # Check if email is enabled or SMS is enabled
+                email_enabled = self.config.get("email_enabled", False)
+                sms_enabled = self.config.get("sms_enabled", False) and self.config.get("sms_recipients")
+                
+                if email_enabled or sms_enabled:
+                    email_body = generate_operational_email_body(combined, "Sawyer_Billing", start_date)
+                    
+                    if email_enabled:
+                        self.log("Emailing billing report...")
+                        try:
+                            send_billing_email(
+                                sender_email=self.config.get("sender_email"),
+                                sender_password=self.config.get("sender_password"),
+                                smtp_server=self.config.get("smtp_server"),
+                                smtp_port=self.config.get("smtp_port"),
+                                recipient_email=self.config.get("recipient_email"),
+                                subject=f"Sawyer Billing Report ({start_date} to {end_date})",
+                                body=email_body,
+                                attachment_path=out_path
+                            )
+                            self.log("SUCCESS: Billing report emailed successfully!")
+                        except Exception as email_err:
+                            self.log(f"WARNING: Report saved locally, but failed to email: {email_err}")
+                            
+                    if sms_enabled:
+                        self.log("Sending SMS notifications...")
+                        try:
+                            from email_sender import send_sms_notification
+                            send_sms_notification(
+                                sender_email=self.config.get("sender_email"),
+                                sender_password=self.config.get("sender_password"),
+                                smtp_server=self.config.get("smtp_server"),
+                                smtp_port=self.config.get("smtp_port"),
+                                phone_numbers=self.config.get("sms_recipients"),
+                                body=email_body
+                            )
+                            self.log("SUCCESS: SMS notifications sent successfully!")
+                        except Exception as sms_err:
+                            self.log(f"WARNING: Failed to send SMS: {sms_err}")
                 
                 messagebox.showinfo("Success", f"Billing report created successfully at:\n{out_path}")
                 
@@ -350,11 +371,11 @@ class SawyerApp:
         toggle_frame = ttk.Frame(frame, padding=5)
         toggle_frame.pack(fill=tk.X, pady=5)
         self.email_enabled_var = tk.BooleanVar(value=self.config.get("email_enabled", False))
-        self.email_enabled_cb = ttk.Checkbutton(toggle_frame, text="Enable Emailing Reports Automatically", variable=self.email_enabled_var, command=self.toggle_email_fields)
+        self.email_enabled_cb = ttk.Checkbutton(toggle_frame, text="Enable Automated Notifications (Email / SMS)", variable=self.email_enabled_var, command=self.toggle_email_fields)
         self.email_enabled_cb.pack(side=tk.LEFT, padx=5)
         
         # 2. Settings Inputs
-        settings_frame = ttk.LabelFrame(frame, text="SMTP Server Configuration", padding=10)
+        settings_frame = ttk.LabelFrame(frame, text="SMTP & SMS Configuration", padding=10)
         settings_frame.pack(fill=tk.X, pady=10)
         
         ttk.Label(settings_frame, text="Sender Email:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
@@ -377,21 +398,30 @@ class SawyerApp:
         self.recipient_email_entry = ttk.Entry(settings_frame, width=40)
         self.recipient_email_entry.grid(row=4, column=1, padx=5, pady=5)
         
+        ttk.Label(settings_frame, text="SMS Recipients:").grid(row=5, column=0, sticky=tk.W, padx=5, pady=5)
+        self.sms_recipients_entry = ttk.Entry(settings_frame, width=40)
+        self.sms_recipients_entry.grid(row=5, column=1, padx=5, pady=5)
+        
+        self.sms_enabled_var = tk.BooleanVar(value=self.config.get("sms_enabled", False))
+        self.sms_enabled_cb = ttk.Checkbutton(settings_frame, text="Enable SMS / Text Notifications (T-Mobile)", variable=self.sms_enabled_var)
+        self.sms_enabled_cb.grid(row=6, column=1, sticky=tk.W, padx=5, pady=5)
+        
         # Load values from config
         self.sender_email_entry.insert(0, self.config.get("sender_email", ""))
         self.sender_password_entry.insert(0, self.config.get("sender_password", ""))
         self.smtp_server_entry.insert(0, self.config.get("smtp_server", "smtp.gmail.com"))
         self.smtp_port_entry.insert(0, self.config.get("smtp_port", "587"))
         self.recipient_email_entry.insert(0, self.config.get("recipient_email", ""))
+        self.sms_recipients_entry.insert(0, self.config.get("sms_recipients", ""))
         
         # Controls Frame
         ctrl_frame = ttk.Frame(frame, padding=5)
         ctrl_frame.pack(fill=tk.X, pady=10)
         
-        self.save_email_btn = ttk.Button(ctrl_frame, text="Save Email Settings", command=self.save_email_settings)
+        self.save_email_btn = ttk.Button(ctrl_frame, text="Save Settings", command=self.save_email_settings)
         self.save_email_btn.pack(side=tk.LEFT, padx=5)
         
-        self.test_email_btn = ttk.Button(ctrl_frame, text="Send Test Email", command=self.send_test_email)
+        self.test_email_btn = ttk.Button(ctrl_frame, text="Send Test Email/SMS", command=self.send_test_email)
         self.test_email_btn.pack(side=tk.LEFT, padx=5)
         
         self.toggle_email_fields()
@@ -403,6 +433,8 @@ class SawyerApp:
         self.smtp_server_entry.config(state=state)
         self.smtp_port_entry.config(state=state)
         self.recipient_email_entry.config(state=state)
+        self.sms_recipients_entry.config(state=state)
+        self.sms_enabled_cb.config(state=state)
         
     def save_email_settings(self):
         enabled = self.email_enabled_var.get()
@@ -411,6 +443,8 @@ class SawyerApp:
         server = self.smtp_server_entry.get().strip()
         port = self.smtp_port_entry.get().strip()
         recipient = self.recipient_email_entry.get().strip()
+        sms_recipients = self.sms_recipients_entry.get().strip()
+        sms_enabled = self.sms_enabled_var.get()
         
         self.save_config(
             email_enabled=enabled,
@@ -418,10 +452,12 @@ class SawyerApp:
             sender_password=pwd,
             smtp_server=server,
             smtp_port=port,
-            recipient_email=recipient
+            recipient_email=recipient,
+            sms_recipients=sms_recipients,
+            sms_enabled=sms_enabled
         )
-        self.log("Email settings saved.")
-        messagebox.showinfo("Success", "Email settings saved successfully.")
+        self.log("Email & SMS settings saved.")
+        messagebox.showinfo("Success", "Email & SMS settings saved successfully.")
         
     def send_test_email(self):
         sender = self.sender_email_entry.get().strip()
@@ -429,27 +465,47 @@ class SawyerApp:
         server = self.smtp_server_entry.get().strip()
         port = self.smtp_port_entry.get().strip()
         recipient = self.recipient_email_entry.get().strip()
+        sms_recipients = self.sms_recipients_entry.get().strip()
         
-        if not sender or not pwd or not recipient:
-            messagebox.showerror("Error", "Please fill in Sender Email, Password, and Recipient Email before testing.")
+        if not sender or not pwd:
+            messagebox.showerror("Error", "Please fill in Sender Email and Password before testing.")
             return
             
-        self.log("Sending test email...")
+        if not recipient and not sms_recipients:
+            messagebox.showerror("Error", "Please fill in either Recipient Email or SMS Recipients before testing.")
+            return
+            
+        self.log("Sending test notifications...")
         try:
-            send_billing_email(
-                sender_email=sender,
-                sender_password=pwd,
-                smtp_server=server,
-                smtp_port=port,
-                recipient_email=recipient,
-                subject="Sawyer Automation - SMTP Test Email",
-                body="This is a test email from the Sawyer Roster Billing & Automation tool. SMTP connection is working correctly!"
-            )
-            self.log("SUCCESS: Test email sent successfully!")
-            messagebox.showinfo("Success", "Test email sent successfully!")
+            from email_sender import send_sms_notification
+            
+            if recipient:
+                send_billing_email(
+                    sender_email=sender,
+                    sender_password=pwd,
+                    smtp_server=server,
+                    smtp_port=port,
+                    recipient_email=recipient,
+                    subject="Sawyer Automation - SMTP Test Email",
+                    body="This is a test email from the Sawyer Roster Billing & Automation tool. SMTP connection is working correctly!"
+                )
+                self.log("SUCCESS: Test email sent successfully!")
+                
+            if sms_recipients:
+                send_sms_notification(
+                    sender_email=sender,
+                    sender_password=pwd,
+                    smtp_server=server,
+                    smtp_port=port,
+                    phone_numbers=sms_recipients,
+                    body="Sawyer Test Text: SMTP/SMS Connection working!"
+                )
+                self.log("SUCCESS: Test text message sent successfully!")
+                
+            messagebox.showinfo("Success", "Test notifications sent successfully!")
         except Exception as e:
-            self.log(f"FAILED to send test email: {e}")
-            messagebox.showerror("Error", f"Failed to send email:\n{e}")
+            self.log(f"FAILED to send test notifications: {e}")
+            messagebox.showerror("Error", f"Failed to send:\n{e}")
 
 def generate_operational_email_body(combined_df, report_name, date_str):
     """Generates a mobile-friendly text summary for the email body."""
@@ -622,35 +678,56 @@ def run_silent_cli(args):
             save_to_excel(combined, summary, out_path)
             print(f"SUCCESS: Report saved to: {out_path}")
             
-            # Send Email if enabled
+            # Send Email/SMS notifications if enabled
             email_enabled = args.send_email or config.get("email_enabled", False)
-            if email_enabled:
+            sms_enabled = args.send_sms or config.get("sms_enabled", False)
+            
+            if email_enabled or sms_enabled:
                 sender = config.get("sender_email")
                 pwd = config.get("sender_password")
                 smtp_srv = config.get("smtp_server", "smtp.gmail.com")
                 smtp_prt = config.get("smtp_port", "587")
                 recipient = config.get("recipient_email")
+                sms_recipients = args.sms_recipients or config.get("sms_recipients")
                 
-                if sender and pwd and recipient:
-                    print("Sending email...")
-                    subject = f"Sawyer Report - {report_label} ({start_date})"
+                if sender and pwd:
                     body = generate_operational_email_body(combined, report_label, start_date)
-                    try:
-                        send_billing_email(
-                            sender_email=sender,
-                            sender_password=pwd,
-                            smtp_server=smtp_srv,
-                            smtp_port=smtp_prt,
-                            recipient_email=recipient,
-                            subject=subject,
-                            body=body,
-                            attachment_path=out_path
-                        )
-                        print("SUCCESS: Email sent successfully!")
-                    except Exception as email_err:
-                        print(f"ERROR: Email failed to send: {email_err}")
+                    
+                    if email_enabled and recipient:
+                        print("Sending email...")
+                        subject = f"Sawyer Report - {report_label} ({start_date})"
+                        try:
+                            send_billing_email(
+                                sender_email=sender,
+                                sender_password=pwd,
+                                smtp_server=smtp_srv,
+                                smtp_port=smtp_prt,
+                                recipient_email=recipient,
+                                subject=subject,
+                                body=body,
+                                attachment_path=out_path
+                            )
+                            print("SUCCESS: Email sent successfully!")
+                        except Exception as email_err:
+                            print(f"ERROR: Email failed to send: {email_err}")
+                            
+                    if sms_enabled and sms_recipients:
+                        print("Sending SMS notifications...")
+                        try:
+                            from email_sender import send_sms_notification
+                            send_sms_notification(
+                                sender_email=sender,
+                                sender_password=pwd,
+                                smtp_server=smtp_srv,
+                                smtp_port=smtp_prt,
+                                phone_numbers=sms_recipients,
+                                body=body
+                            )
+                            print("SUCCESS: SMS notifications sent successfully!")
+                        except Exception as sms_err:
+                            print(f"ERROR: SMS failed to send: {sms_err}")
                 else:
-                    print("ERROR: Email settings are incomplete in config.json. Cannot send email.")
+                    print("ERROR: SMTP sender settings are incomplete in config.json. Cannot send notifications.")
             
             # Clean up temp files
             for f in csv_files:
@@ -683,6 +760,8 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", help="Directory to save the Excel file")
     parser.add_argument("--headless", action="store_true", default=False, help="Run browser in background (headless)")
     parser.add_argument("--send-email", action="store_true", help="Send report via email after compilation")
+    parser.add_argument("--send-sms", action="store_true", help="Send report summary via SMS text message")
+    parser.add_argument("--sms-recipients", help="Comma-separated phone numbers to send SMS texts to")
     parser.add_argument("--report-name", "-n", help="Custom name for the report (e.g. 'Drop Off', 'Pick Up', 'End of Day')")
     
     if len(sys.argv) > 1 and ("--cli" in sys.argv or "-h" in sys.argv or "--help" in sys.argv):
