@@ -83,13 +83,11 @@ def send_sms_notification(sender_email, sender_password, smtp_server, smtp_port,
         server.login(sender_email.strip(), sender_password.strip())
         
         for recipient in recipients:
-            msg = MIMEMultipart()
-            msg['From'] = sender_email
-            msg['To'] = recipient
-            msg['Subject'] = "" 
-            msg.attach(MIMEText(body, 'plain'))
+            # Clean body of non-ASCII characters for basic gateway compatibility
+            clean_body = body.encode('ascii', 'ignore').decode('ascii')
+            msg = f"From: {sender_email}\r\nTo: {recipient}\r\nSubject: Sawyer Alert\r\n\r\n{clean_body}"
             
-            server.sendmail(sender_email, recipient, msg.as_string())
+            server.sendmail(sender_email, recipient, msg)
             
         server.quit()
         return True

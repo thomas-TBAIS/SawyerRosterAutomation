@@ -302,6 +302,7 @@ class SawyerApp:
                     if sms_enabled:
                         self.log("Sending SMS notifications...")
                         try:
+                            sms_body = generate_operational_sms_body(combined, "Sawyer_Billing", start_date)
                             from email_sender import send_sms_notification
                             send_sms_notification(
                                 sender_email=self.config.get("sender_email"),
@@ -309,7 +310,7 @@ class SawyerApp:
                                 smtp_server=self.config.get("smtp_server"),
                                 smtp_port=self.config.get("smtp_port"),
                                 phone_numbers=self.config.get("sms_recipients"),
-                                body=email_body
+                                body=sms_body
                             )
                             self.log("SUCCESS: SMS notifications sent successfully!")
                         except Exception as sms_err:
@@ -593,6 +594,79 @@ def generate_operational_email_body(combined_df, report_name, date_str):
         return (f"Hello,\n\nPlease find attached the automatically generated {report_name or 'Sawyer Billing'} report "
                 f"compiled on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} for {date_str}.")
 
+def generate_operational_sms_body(combined_df, report_name, date_str):
+    """Generates a highly compact summary for SMS/Text notifications to fit carrier limits."""
+    report_name_lower = (report_name or "").lower()
+    
+    # 1. DROP OFF (9:20 AM)
+    if "drop" in report_name_lower or "920" in report_name_lower or "morning" in report_name_lower:
+        body_lines = []
+        body_lines.append(f"=== Drop Off Summary ({date_str}) ===")
+        
+        total_reg = len(combined_df)
+        is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
+        total_in = is_checked_in.sum()
+        
+        body_lines.append(f"Total: {total_reg} | Present: {total_in}")
+        body_lines.append("")
+        
+        camp_col = 'Camp Name' if 'Camp Name' in combined_df.columns else None
+        if camp_col:
+            grouped = combined_df.groupby(camp_col)
+            for camp, group in grouped:
+                group = group.sort_values(by='Student Name')
+                in_group_mask = group['Check-in Time'].notna() & (group['Check-in Time'].astype(str).str.strip() != '')
+                in_count = in_group_mask.sum()
+                reg_count = len(group)
+                
+                body_lines.append(f"{camp} ({in_count}/{reg_count} in):")
+                absent_group = group[~in_group_mask]
+                if len(absent_group) > 0:
+                    absent_names = ", ".join(absent_group['Student Name'].tolist())
+                    body_lines.append(f"  Absent: {absent_names}")
+                else:
+                    body_lines.append("  All present!")
+        else:
+            absent_df = combined_df[~is_checked_in]
+            if len(absent_df) > 0:
+                absent_names = ", ".join(absent_df['Student Name'].tolist())
+                body_lines.append(f"Absent: {absent_names}")
+            else:
+                body_lines.append("All present!")
+                
+        return "\n".join(body_lines).strip()
+        
+    # 2. PICK UP (12:20 PM)
+    elif "pick" in report_name_lower or "1220" in report_name_lower or "midday" in report_name_lower:
+        body_lines = []
+        body_lines.append(f"=== Pick Up Summary ({date_str}) ===")
+        
+        is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
+        is_checked_out = combined_df['Check-out Time'].notna() & (combined_df['Check-out Time'].astype(str).str.strip() != '')
+        still_in_df = combined_df[is_checked_in & ~is_checked_out]
+        
+        camp_col = 'Camp Name' if 'Camp Name' in still_in_df.columns else None
+        if camp_col:
+            still_in_df = still_in_df.sort_values(by=[camp_col, 'Student Name'])
+        else:
+            still_in_df = still_in_df.sort_values(by=['Student Name'])
+            
+        total_still_in = len(still_in_df)
+        body_lines.append(f"Still checked in: {total_still_in}")
+        
+        if total_still_in > 0:
+            for idx, (_, row) in enumerate(still_in_df.iterrows(), 1):
+                student_name = row['Student Name']
+                body_lines.append(f"{idx}. {student_name}")
+        else:
+            body_lines.append("All checked out successfully!")
+            
+        return "\n".join(body_lines).strip()
+        
+    # 3. DEFAULT (End of Day/Other)
+    else:
+        return f"Sawyer report compiled for {report_name or 'Billing'} on {date_str}."
+
 def run_silent_cli(args):
     """Run the scraping and processing pipeline in command-line mode without GUI."""
     # Load configuration for credentials
@@ -714,6 +788,7 @@ def run_silent_cli(args):
                     if sms_enabled and sms_recipients:
                         print("Sending SMS notifications...")
                         try:
+                            sms_body = generate_operational_sms_body(combined, report_label, start_date)
                             from email_sender import send_sms_notification
                             send_sms_notification(
                                 sender_email=sender,
@@ -721,7 +796,7 @@ def run_silent_cli(args):
                                 smtp_server=smtp_srv,
                                 smtp_port=smtp_prt,
                                 phone_numbers=sms_recipients,
-                                body=body
+                                body=sms_body
                             )
                             print("SUCCESS: SMS notifications sent successfully!")
                         except Exception as sms_err:
