@@ -18,21 +18,25 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
         
     async with async_playwright() as p:
         # Use a persistent browser context to remember login sessions, cookies, and 2FA status
-        user_data_dir = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation\browser_profile")
+        user_data_dir = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation\edge_browser_profile")
         os.makedirs(user_data_dir, exist_ok=True)
         
         context = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=headless, 
+            channel="msedge",
+            ignore_default_args=["--no-sandbox", "--enable-automation"],
             args=["--disable-blink-features=AutomationControlled"],
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
             accept_downloads=True
         )
 
-        # Block image, media, and font assets to speed up browsing significantly
-        await context.route("**/*", lambda route: 
-            route.abort() if route.request.resource_type in ["image", "media", "font"] 
-            else route.continue_()
-        )
+        # Mask automation signatures
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
 
         page = context.pages[0] if context.pages else await context.new_page()
         
@@ -56,6 +60,9 @@ async def run_scraper(email, password, start_date_str, end_date_str, download_di
             pass
             
         if not is_logged_in:
+            if headless:
+                raise Exception("Sawyer session expired or invalid. Please open the Sawyer Roster app and click 'Log in / Refresh Session'.")
+                
             if progress_callback:
                 progress_callback("Not logged in. Waiting for login page... Please complete any human verification/Cloudflare in the browser.")
             await page.wait_for_selector("input[type='email']", timeout=300000)

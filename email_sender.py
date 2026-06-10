@@ -9,8 +9,10 @@ def send_billing_email(sender_email, sender_password, smtp_server, smtp_port, re
     """
     Sends the generated Excel report (or a test email) via SMTP.
     """
-    if not sender_email or not sender_password or not recipient_email:
-        raise ValueError("Sender email, password, and recipient email must be configured.")
+    # Parse recipients (supports comma-separated emails)
+    recipients = [r.strip() for r in recipient_email.split(',') if r.strip()]
+    if not recipients:
+        raise ValueError("No valid recipient email addresses provided.")
         
     msg = MIMEMultipart()
     msg['From'] = sender_email
@@ -42,7 +44,7 @@ def send_billing_email(sender_email, sender_password, smtp_server, smtp_port, re
         
         # Send mail
         text = msg.as_string()
-        server.sendmail(sender_email, recipient_email.strip(), text)
+        server.sendmail(sender_email, recipients, text)
         server.quit()
         return True
     except Exception as e:

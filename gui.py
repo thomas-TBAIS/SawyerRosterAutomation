@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timedelta
 import glob
 import json
+import subprocess
 
 
 # Import core logic
@@ -32,6 +33,7 @@ class SawyerApp:
         self.config = self.load_config()
         
         self.create_widgets()
+        self.update_cookie_status()
         
     def load_config(self):
         default_config = {
@@ -132,6 +134,15 @@ class SawyerApp:
         if self.remember_var.get():
             self.email_entry.insert(0, self.config.get("email", ""))
             self.pass_entry.insert(0, self.config.get("password", ""))
+            
+        # Row 3: Cookies status
+        ttk.Label(cred_frame, text="Login Session:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.cookie_status_label = ttk.Label(cred_frame, text="Checking status...")
+        self.cookie_status_label.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Row 4: Refresh button
+        self.refresh_session_btn = ttk.Button(cred_frame, text="Log in / Refresh Session", command=self.refresh_login_session)
+        self.refresh_session_btn.grid(row=4, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 2. Date Range
         date_frame = ttk.LabelFrame(frame, text="Scraping Date Range", padding=10)
@@ -657,6 +668,99 @@ def generate_operational_sms_body(combined_df, report_name, date_str):
     # 3. DEFAULT (End of Day/Other)
     else:
         return f"Sawyer report compiled for {report_name or 'Billing'} on {date_str}."
+
+    def refresh_login_session(self):
+        # Find msedge.exe
+        edge_paths = [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            os.path.expandvars(r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe"),
+            os.path.expandvars(r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe"),
+        ]
+        edge_path = None
+        for p in edge_paths:
+            if os.path.exists(p):
+                edge_path = p
+                break
+                
+        if not edge_path:
+            messagebox.showerror("Error", "Microsoft Edge installation not found.\nPlease make sure Edge is installed on your Windows system.")
+            return
+            
+        profile_dir = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation\edge_browser_profile")
+        os.makedirs(profile_dir, exist_ok=True)
+        
+        cmd = [
+            edge_path,
+            f"--user-data-dir={profile_dir}",
+            "https://www.hisawyer.com/portal"
+        ]
+        
+        self.log("Opening Edge for manual Sawyer login...")
+        try:
+            # Run Edge natively as a separate process (unautomated)
+            proc = subprocess.Popen(cmd)
+            
+            # Show interactive dialog instructions
+            messagebox.showinfo(
+                "Action Required",
+                "A Microsoft Edge window has been opened.\n\n"
+                "1. Please log into your Sawyer account in that Edge window.\n"
+                "2. Check 'Remember this computer' and complete any 2FA/checks.\n"
+                "3. Once you see your daily calendar / dashboard, close the Edge window completely.\n\n"
+                "Click OK in this dialog AFTER you have successfully logged in and closed the Edge window."
+            )
+            
+            # Update status
+            self.update_cookie_status()
+            self.log("Sawyer login session refreshed.")
+        except Exception as e:
+            self.log(f"ERROR: Failed to launch Edge: {e}")
+            messagebox.showerror("Error", f"Failed to launch Microsoft Edge:\n{e}")
+
+    def update_cookie_status(self):
+        cookies_db = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation\edge_browser_profile\Default\Network\Cookies")
+        if not os.path.exists(cookies_db):
+            cookies_db = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation\edge_browser_profile\Cookies")
+            
+        if os.path.exists(cookies_db):
+            temp_db = os.path.expandvars(r"%USERPROFILE%\AppData\Local\SawyerRosterAutomation\Cookies_status_temp.db")
+            try:
+                # Copy to temp file to avoid lock
+                with open(cookies_db, "rb") as f_src:
+                    with open(temp_db, "wb") as f_dst:
+                        f_dst.write(f_src.read())
+                        
+                import sqlite3
+                conn = sqlite3.connect(temp_db)
+                cursor = conn.cursor()
+                cursor.execute("SELECT expires_utc FROM cookies WHERE host_key LIKE ? AND name = ?", ("%hisawyer%", "_sawyer_session"))
+                row = cursor.fetchone()
+                conn.close()
+                
+                if row:
+                    expires_utc = row[0]
+                    if expires_utc > 0:
+                        timestamp = (expires_utc - 11644473600000000) / 1000000.0
+                        exp_dt = datetime.fromtimestamp(timestamp)
+                        if exp_dt < datetime.now():
+                            self.cookie_status_label.config(text=f"Expired on {exp_dt.strftime('%Y-%m-%d %H:%M')}", foreground="red")
+                        else:
+                            self.cookie_status_label.config(text=f"Active (Expires: {exp_dt.strftime('%Y-%m-%d %H:%M')})", foreground="green")
+                    else:
+                        self.cookie_status_label.config(text="Active (Session cookie)", foreground="green")
+                else:
+                    self.cookie_status_label.config(text="Session expired (Login required)", foreground="red")
+            except Exception as e:
+                self.cookie_status_label.config(text=f"Status: Error ({e})", foreground="red")
+            finally:
+                if os.path.exists(temp_db):
+                    try:
+                        os.remove(temp_db)
+                    except:
+                        pass
+        else:
+            self.cookie_status_label.config(text="No active session (Login required)", foreground="blue")
 
 def run_silent_cli(args):
     """Run the scraping and processing pipeline in command-line mode without GUI."""
