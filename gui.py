@@ -617,8 +617,8 @@ def generate_operational_email_body(combined_df, report_name, date_str):
     import pandas as pd
     report_name_lower = (report_name or "").lower()
     
-    # 1. DROP OFF (9:20 AM)
-    if "drop" in report_name_lower or "920" in report_name_lower or "morning" in report_name_lower:
+    # 1. DROP OFF (9:20 AM / 9:30 AM)
+    if "drop" in report_name_lower or "920" in report_name_lower or "930" in report_name_lower or "morning" in report_name_lower:
         body_lines = []
         body_lines.append(f"=== Drop Off Attendance Summary ({date_str}) ===")
         
@@ -665,8 +665,8 @@ def generate_operational_email_body(combined_df, report_name, date_str):
                     
         return "\n".join(body_lines).strip()
         
-    # 2. PICK UP (12:20 PM)
-    elif "pick" in report_name_lower or "1220" in report_name_lower or "midday" in report_name_lower:
+    # 2. PICK UP (12:20 PM / 12:15 PM)
+    elif "pick" in report_name_lower or "1220" in report_name_lower or "1215" in report_name_lower or "midday" in report_name_lower:
         body_lines = []
         body_lines.append(f"=== Pick Up Attendance Summary ({date_str}) ===")
         
@@ -702,8 +702,8 @@ def generate_operational_sms_body(combined_df, report_name, date_str):
     """Generates a highly compact, carrier-friendly summary for SMS/Text notifications to fit carrier limits."""
     report_name_lower = (report_name or "").lower()
     
-    # 1. DROP OFF (9:20 AM)
-    if "drop" in report_name_lower or "920" in report_name_lower or "morning" in report_name_lower:
+    # 1. DROP OFF (9:20 AM / 9:30 AM)
+    if "drop" in report_name_lower or "920" in report_name_lower or "930" in report_name_lower or "morning" in report_name_lower:
         total_reg = len(combined_df)
         is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
         total_in = is_checked_in.sum()
@@ -732,8 +732,8 @@ def generate_operational_sms_body(combined_df, report_name, date_str):
             
         return body.strip()
         
-    # 2. PICK UP (12:20 PM)
-    elif "pick" in report_name_lower or "1220" in report_name_lower or "midday" in report_name_lower:
+    # 2. PICK UP (12:20 PM / 12:15 PM)
+    elif "pick" in report_name_lower or "1220" in report_name_lower or "1215" in report_name_lower or "midday" in report_name_lower:
         is_checked_in = combined_df['Check-in Time'].notna() & (combined_df['Check-in Time'].astype(str).str.strip() != '')
         is_checked_out = combined_df['Check-out Time'].notna() & (combined_df['Check-out Time'].astype(str).str.strip() != '')
         still_in_df = combined_df[is_checked_in & ~is_checked_out]

@@ -46,16 +46,16 @@ def calculate_billing(row):
     
     # 1. Before Camp (official start at 9:00 AM)
     if checkin is not None:
-        cutoff_in = time(8, 45)
-        # Billed from check-in to 9:00 AM if checked in on or before 8:45 AM
+        cutoff_in = time(8, 40)
+        # Billed from check-in to 9:00 AM if checked in on or before 8:40 AM
         if checkin <= cutoff_in:
             checkin_hour_val = round_down_time(checkin)
             before_hours = 9.0 - checkin_hour_val
             
     # 2. After Camp (official end at 12:00 PM)
     if checkout is not None:
-        cutoff_out = time(12, 15)
-        # Billed from 12:00 PM to check-out if checked out after 12:15 PM
+        cutoff_out = time(12, 10)
+        # Billed from 12:00 PM to check-out if checked out after 12:10 PM
         if checkout > cutoff_out:
             checkout_hour_val = round_up_time(checkout)
             after_hours = checkout_hour_val - 12.0
